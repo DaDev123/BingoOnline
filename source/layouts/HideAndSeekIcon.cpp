@@ -5,6 +5,7 @@
 #include "al/string/StringTmp.h"
 #include "prim/seadSafeString.h"
 #include "server/gamemode/GameModeTimer.hpp"
+#include "server/gamemode/GameModeManager.hpp"
 #include "server/HideAndSeekMode.hpp"
 #include "server/Client.hpp"
 #include "al/util.hpp"
@@ -16,7 +17,8 @@ HideAndSeekIcon::HideAndSeekIcon(const char* name, const al::LayoutInitInfo& ini
 
     al::initLayoutActor(this, initInfo, "HideAndSeekIcon", 0);
 
-    mInfo = (HideAndSeekInfo*)Client::getModeInfo();
+    mInfo = GameModeManager::instance()->getInfo<HideAndSeekInfo>();
+    Logger::log("layout syttem%p %p\n", initInfo.mLayoutSystem, mInfo);
 
     initNerve(&nrvHideAndSeekIconEnd, 0);
 

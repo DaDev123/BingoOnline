@@ -10,6 +10,7 @@
 #include "actors/PuppetActor.h"
 #include "math/seadQuat.h"
 #include "math/seadVector.h"
+#include "server/gamemode/GameModeManager.hpp"
 #include "server/gamemode/GameModeBase.hpp"
 #include "server/HideAndSeekMode.hpp"
 
@@ -185,9 +186,9 @@ void PuppetActor::control() {
         }
 
         if (mNameTag) {
-            if (Client::isSelectedMode(GameMode::HIDEANDSEEK) && Client::isModeActive()) {
+            if (GameModeManager::instance()->isModeAndActive(GameMode::HIDEANDSEEK)) {
                 mNameTag->mIsAlive =
-                    Client::getMode<HideAndSeekMode>()->isPlayerIt() && mInfo->isIt;
+                    GameModeManager::instance()->getMode<HideAndSeekMode>()->isPlayerIt() && mInfo->isIt;
                 
             } else {
                 if(!mNameTag->mIsAlive)

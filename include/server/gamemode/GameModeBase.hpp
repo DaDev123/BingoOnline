@@ -16,12 +16,12 @@
 // enum for defining game mode types
 enum GameMode : s8 {
     NONE = -1,
-    HIDEANDSEEK
+    HIDEANDSEEK,
+    BINGO
 };
 
 // struct containing info about the games state for use in gamemodes
 struct GameModeInitInfo {
-
     GameModeInitInfo(al::ActorInitInfo* info, al::Scene *scene){
         mLayoutInitInfo = info->mLayoutInitInfo;
         mPlayerHolder = info->mActorSceneInfo.mPlayerHolder;
@@ -47,6 +47,7 @@ struct GameModeInitInfo {
 class GameModeBase : public al::IUseName, public al::IUseSceneObjHolder {
 public:
     GameModeBase(const char* name) { mName = name; }
+    virtual ~GameModeBase() = default;
     const char* getName() const override { return mName.cstr(); }
     al::SceneObjHolder* getSceneObjHolder() const override { return mSceneObjHolder; }
 
@@ -56,9 +57,9 @@ public:
 
     virtual void init(GameModeInitInfo const &info);
 
-    virtual void begin() { mIsActive = true;}
+    virtual void begin() { mIsActive = true; Logger::log("Begin\n"); }
     virtual void update();
-    virtual void end() { mIsActive = false; }
+    virtual void end() { mIsActive = false; Logger::log("End\n"); }
     
 protected:
     sead::FixedSafeString<0x10> mName;

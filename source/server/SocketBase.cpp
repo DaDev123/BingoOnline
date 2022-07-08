@@ -43,6 +43,14 @@ s32 SocketBase::socket_log(const char* str)
     return nn::socket::Send(this->socket_log_socket, str, strlen(str), 0);
 }
 
+s32 SocketBase::socket_log_buffer(const void* data, u32 length)
+{
+    if (this->socket_log_state != SOCKET_LOG_CONNECTED)
+        return -1;
+
+    return nn::socket::Send(this->socket_log_socket, data, length, 0);
+}
+
 s32 SocketBase::socket_read_char(char *out) {
 
     if (this->socket_log_state != SOCKET_LOG_CONNECTED)

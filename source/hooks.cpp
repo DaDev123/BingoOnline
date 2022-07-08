@@ -19,7 +19,8 @@
 #include "game/Player/States/PlayerStateRunHakoniwa.h"
 #include "game/StageScene/StageSceneStateOption.h"
 #include "game/StageScene/StageSceneStatePauseMenu.h"
-#include "game/StageScene/StageSceneStateServerConfig.hpp"
+#include "server/StageSceneStateServerConfig.hpp"
+#include "server/StageSceneStateDebugMenu.hpp"
 #include "logger.hpp"
 #include "main.hpp"
 #include "al/byaml/writer/ByamlWriter.h"
@@ -27,9 +28,10 @@
 #include "rs/util/InputUtil.h"
 #include "sead/prim/seadSafeString.h"
 #include "server/HideAndSeekMode.hpp"
+#include "server/gamemode/GameModeManager.hpp"
 
 bool comboBtnHook(int port) {
-    if (Client::isModeActive()) { // only switch to combo if any gamemode is active
+    if (GameModeManager::instance()->isActive()) { // only switch to combo if any gamemode is active
         return !al::isPadHoldL(port) && al::isPadTriggerDown(port);
     } else {
         return al::isPadTriggerDown(port);
@@ -82,8 +84,9 @@ bool registerShineToList(Shine* shineActor) {
 }
 
 void overrideNerveHook(StageSceneStatePauseMenu* thisPtr, al::Nerve* nrvSet) {
-
-    if (al::isPadHoldZL(-1)) {
+    if (al::isPadHoldL(-1) && !al::isPadHoldZL(-1) && !al::isPadHoldR(-1) && al::isPadHoldZR(-1)) { // L + R + ZR (- ZL to avoid discovery)
+        al::setNerve(thisPtr, &nrvStageSceneStatePauseMenuDebugMenu);
+    } else if (al::isPadHoldZL(-1)) {
         al::setNerve(thisPtr, &nrvStageSceneStatePauseMenuServerConfig);
     } else {
         al::setNerve(thisPtr, nrvSet);
@@ -91,6 +94,7 @@ void overrideNerveHook(StageSceneStatePauseMenu* thisPtr, al::Nerve* nrvSet) {
 }
 
 StageSceneStateServerConfig *sceneStateServerConfig = nullptr;
+StageSceneStateDebugMenu *sceneStateDebugMenu = nullptr;
 
 void initStateHook(StageSceneStatePauseMenu *thisPtr, char const *stateName, al::Scene *host, al::LayoutInitInfo const &initInfo, FooterParts *footer,
                    GameDataHolder *data, bool unkBool) {
@@ -98,6 +102,7 @@ void initStateHook(StageSceneStatePauseMenu *thisPtr, char const *stateName, al:
         new StageSceneStateOption(stateName, host, initInfo, footer, data, unkBool);
 
     sceneStateServerConfig = new StageSceneStateServerConfig("ServerConfig", host, initInfo, footer, data, unkBool);
+    sceneStateDebugMenu = new StageSceneStateDebugMenu("DebugMenu", host, initInfo, footer, data, unkBool);
 }
 
 void initNerveStateHook(StageSceneStatePauseMenu* stateParent, StageSceneStateOption* stateOption,
@@ -106,23 +111,24 @@ void initNerveStateHook(StageSceneStatePauseMenu* stateParent, StageSceneStateOp
     al::initNerveState(stateParent, stateOption, executingNerve, stateName);
 
     al::initNerveState(stateParent, sceneStateServerConfig, &nrvStageSceneStatePauseMenuServerConfig, "CustomNerveOverride");
+    al::initNerveState(stateParent, sceneStateDebugMenu, &nrvStageSceneStatePauseMenuDebugMenu, "DebugMenuNerve");
 }
 
 // skips starting both coin counters
 void startCounterHook(CoinCounter* thisPtr) {
-    if (!Client::isModeActive()) {
+    if (!GameModeManager::instance()->isActive()) {
         thisPtr->tryStart();
     }
 }
 
 // Simple hook that can be used to override isModeE3 checks to enable/disable certain behaviors
 bool modeE3Hook() {
-    return Client::isModeActive();
+    return GameModeManager::instance()->isActive();
 }
 
 // Skips ending the play guide layout if a mode is active, since the mode would have already ended it
 void playGuideEndHook(al::SimpleLayoutAppearWaitEnd* thisPtr) {
-    if (!Client::isModeActive()) {
+    if (!GameModeManager::instance()->isActive()) {
         thisPtr->end();
     }
 }
@@ -135,14 +141,14 @@ void initHackCapHook(al::LiveActor *cappy) {
 
 al::PlayerHolder* createTicketHook(StageScene* curScene) {
     // only creates custom gravity camera ticket if hide and seek mode is active
-    if (Client::isSelectedMode(GameMode::HIDEANDSEEK)) {
+    if (GameModeManager::instance()->isMode(GameMode::HIDEANDSEEK)) {
         al::CameraDirector* director = curScene->getCameraDirector();
         if (director) {
             if (director->mFactory) {
                 al::CameraTicket* gravityCamera = director->createCameraFromFactory(
                     "CameraPoserCustom", nullptr, 0, 5, sead::Matrix34f::ident);
 
-                HideAndSeekMode* mode = Client::getMode<HideAndSeekMode>();
+                HideAndSeekMode* mode = GameModeManager::instance()->getMode<HideAndSeekMode>();
 
                 mode->setCameraTicket(gravityCamera);
             }
@@ -157,9 +163,9 @@ bool borderPullBackHook(WorldEndBorderKeeper* thisPtr) {
     bool isFirstStep = al::isFirstStep(thisPtr);
 
     if (isFirstStep) {
-        if (Client::isSelectedMode(GameMode::HIDEANDSEEK) && Client::isModeActive()) {
+        if (GameModeManager::instance()->isModeAndActive(GameMode::HIDEANDSEEK)) {
 
-            HideAndSeekMode* mode = Client::getMode<HideAndSeekMode>();
+            HideAndSeekMode* mode = GameModeManager::instance()->getMode<HideAndSeekMode>();
 
             if (mode->isUseGravity()) {
                 killMainPlayer(thisPtr->mActor);

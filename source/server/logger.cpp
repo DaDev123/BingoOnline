@@ -12,37 +12,33 @@ void Logger::createInstance() {
     #endif
 }
 
-nn::Result Logger::init(const char* ip, u16 port) {
-
-    sock_ip = ip;
+void Logger::reconnect() {
+    // sInstance->closeSocket();
     
+    in_addr hostAddress = { 0 };
+    sockaddr serverAddress = { 0 };
+    
+    nn::socket::InetAton(sInstance->sock_ip, &hostAddress);
+
+    serverAddress.address = hostAddress;
+    serverAddress.port = nn::socket::InetHtons(sInstance->port);
+    serverAddress.family = 2;
+
+    nn::Result result;
+    if ((result = nn::socket::Connect(sInstance->socket_log_socket, &serverAddress, sizeof(serverAddress))).isFailure()) {
+        sInstance->socket_log_state = SOCKET_LOG_UNAVAILABLE;
+        return;
+    }
+    
+    sInstance->socket_log_state = SOCKET_LOG_CONNECTED;
+}
+
+nn::Result Logger::init(const char* ip, u16 port) {
+    this->sock_ip = ip;
     this->port = port;
     
     in_addr hostAddress = { 0 };
     sockaddr serverAddress = { 0 };
-
-    if (this->socket_log_state != SOCKET_LOG_UNINITIALIZED)
-        return -1;
-
-    nn::nifm::Initialize();
-    nn::nifm::SubmitNetworkRequest();
-
-    while (nn::nifm::IsNetworkRequestOnHold()) { }
-
-    // emulators make this return false always, so skip it during init
-    #ifndef EMU
-
-    if (!nn::nifm::IsNetworkAvailable()) {
-        this->socket_log_state = SOCKET_LOG_UNAVAILABLE;
-        return -1;
-    }
-
-    #endif
-    
-    if ((this->socket_log_socket = nn::socket::Socket(2, 1, 0)) < 0) {
-        this->socket_log_state = SOCKET_LOG_UNAVAILABLE;
-        return -1;
-    }
     
     nn::socket::InetAton(this->sock_ip, &hostAddress);
 
@@ -51,6 +47,28 @@ nn::Result Logger::init(const char* ip, u16 port) {
     serverAddress.family = 2;
 
     nn::Result result;
+
+    if (this->socket_log_state == SOCKET_LOG_UNINITIALIZED) {
+        nn::nifm::Initialize();
+        nn::nifm::SubmitNetworkRequest();
+
+        while (nn::nifm::IsNetworkRequestOnHold()) { }
+
+        // emulators make this return false always, so skip it during init
+        #ifndef EMU
+
+        if (!nn::nifm::IsNetworkAvailable()) {
+            this->socket_log_state = SOCKET_LOG_UNAVAILABLE;
+            return -1;
+        }
+
+        #endif
+        
+        if ((this->socket_log_socket = nn::socket::Socket(2, 1, 0)) < 0) {
+            this->socket_log_state = SOCKET_LOG_UNAVAILABLE;
+            return -1;
+        }
+    }
 
     if ((result = nn::socket::Connect(this->socket_log_socket, &serverAddress, sizeof(serverAddress))).isFailure()) {
         this->socket_log_state = SOCKET_LOG_UNAVAILABLE;
@@ -96,6 +114,12 @@ void Logger::log(const char* fmt, ...) {
     }
 
     va_end(args);
+}
+
+void Logger::log_buffer(const void* data, u32 length) {
+    if (!sInstance) return;
+    sInstance->socket_log_buffer(data, length);
+    sInstance->socket_log("\n\n\n\n\n");
 }
 
 bool Logger::pingSocket() {

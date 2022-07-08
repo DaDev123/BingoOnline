@@ -26,6 +26,7 @@ class SocketBase {
 
     protected:
         s32 socket_log(const char* str);
+        s32 socket_log_buffer(const void* data, u32 size);
         s32 socket_read_char(char *out);
 
         char sockName[0x10] = {};

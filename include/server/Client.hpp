@@ -91,8 +91,6 @@ class Client {
         static bool isNeedUpdateShines();
         bool isShineCollected(int shineId);
 
-        static void initMode(GameModeInitInfo const &initInfo);
-        
         static void sendHackCapInfPacket(const HackCap *hackCap);
         static void sendPlayerInfPacket(const PlayerActorHakoniwa *player);
         static void sendGameInfPacket(const PlayerActorHakoniwa *player, GameDataHolderAccessor holder);
@@ -125,26 +123,7 @@ class Client {
 
         static PuppetActor* getDebugPuppet();
 
-        static GameMode getServerMode() {
-            return sInstance ? sInstance->mServerMode : GameMode::NONE;
-        }
-
-        static void setServerMode(GameMode mode) {
-            if (sInstance) sInstance->mServerMode = mode;
-        }
-
-        static GameMode getCurrentMode();
-
-        static GameModeBase* getModeBase() { return sInstance ? sInstance->mCurMode : nullptr; }
-
-        template <typename T>
-        static T* getMode() {return sInstance ? (T*)sInstance->mCurMode : nullptr;}
-
-        static GameModeConfigMenu* tryCreateModeMenu();
-
         static int getMaxPlayerCount() { return sInstance ? sInstance->maxPuppets : 10;}
-
-        static void toggleCurrentMode();
 
         static void updateStates();
 
@@ -168,6 +147,12 @@ class Client {
             return 0;
         }
 
+        static PuppetHolder* getPuppetHolder() {
+            if (sInstance)
+                return sInstance->mPuppetHolder;
+            return nullptr;
+        }
+
         static void setSceneInfo(const al::ActorInitInfo& initInfo, const StageScene *stageScene);
 
         static bool tryRegisterShine(Shine* shine);
@@ -178,21 +163,6 @@ class Client {
 
         static void openKeyboardIP();
         static void openKeyboardPort();
-
-        static GameModeInfoBase* getModeInfo() {
-            return sInstance ? sInstance->mModeInfo : nullptr;
-        }
-
-        // should only be called during mode init
-        static void setModeInfo(GameModeInfoBase* info) {
-            if(sInstance) sInstance->mModeInfo = info;
-        }
-
-        static void tryRestartCurrentMode();
-
-        static bool isModeActive() { return sInstance ? sInstance->mIsModeActive : false; }
-        
-        static bool isSelectedMode(GameMode mode) { return sInstance ? sInstance->mCurMode->getMode() == mode: false; }
 
         void resetCollectedShines();
 
@@ -279,19 +249,9 @@ class Client {
 
         u8 mScenario = 0;
 
-        // --- Mode Info ---
-
-        GameModeBase* mCurMode = nullptr;
-
-        GameMode mServerMode = GameMode::NONE; // current mode set by server, will sometimes not match up with current game mode (until scene re-init) if server switches gamemodes
-
-        GameModeInfoBase *mModeInfo = nullptr;
-
-        bool mIsModeActive = false;
-
         // --- Puppet Info ---
 
-        PuppetInfo *mPuppetInfoArr[32];
+        PuppetInfo *mPuppetInfoArr[32] = {};
 
         PuppetHolder *mPuppetHolder = nullptr;
 

@@ -25,8 +25,10 @@
 #include "packets/TagInf.h"
 #include "sead/basis/seadRawPrint.h"
 #include "sead/math/seadQuat.h"
+#include <stream/seadPrintStream.h>
+#include "server/bingo/BingoConfigMenu.hpp"
 #include "server/gamemode/GameModeBase.hpp"
-#include "server/gamemode/GameModeFactory.hpp"
+#include "server/gamemode/GameModeManager.hpp"
 #include "server/HideAndSeekConfigMenu.hpp"
 #include "server/HideAndSeekMode.hpp"
 
@@ -89,8 +91,6 @@ Client::Client(int bufferSize) {
 
     Logger::setLogName(playerName.name);  // set Debug logger name to player name
 
-    mServerMode = GameMode::HIDEANDSEEK; // temp for testing
-
     if(!sInstance) {
         sInstance = this;
     }
@@ -114,39 +114,6 @@ void Client::init(al::LayoutInitInfo const &initInfo) {
     // mConnectionWait->tryEndForce();
 }
 
-/**
- * @brief creates and initializes the gamemode selected by either server or client settings
- * 
- * @param initInfo init info used to initialize gamemode
- */
-void Client::initMode(GameModeInitInfo const& initInfo) {
-
-    if (!sInstance) {
-        Logger::log("Static Instance is null!\n");
-        return;
-    }
-
-    GameModeInitInfo newInfo = initInfo;
-
-    newInfo.initServerInfo(sInstance->mServerMode, sInstance->mPuppetHolder);
-
-    GameModeFactory modeFactory("GameModeFactory");
-
-    const char* modeName = GameModeFactory::getModeString(newInfo.mMode);
-
-    if (modeName) {
-        auto creator = modeFactory.getCreator(modeName);
-        if (creator) {
-            sInstance->mCurMode = creator(modeName);
-        }
-    }
-
-    if (sInstance->mCurMode) {
-        sInstance->mCurMode->init(newInfo);
-    } else {
-        Logger::log("Failed to Create Gamemode! Mode: \n", modeName ? modeName : "Unknown");
-    }
-}
 /**
  * @brief starts client read thread
  * 
@@ -658,13 +625,16 @@ void Client::sendTagInfPacket() {
         return;
     }
 
-    if (sInstance->mServerMode != GameMode::HIDEANDSEEK) {
+    Logger::log("WARNING: HNS IS BROKEN");
+
+    HideAndSeekMode* hsMode = GameModeManager::instance()->getMode<HideAndSeekMode>();
+
+    if (!GameModeManager::instance()->isMode(GameMode::HIDEANDSEEK)) {
         Logger::log("State is not Hide and Seek!\n");
         return;
     }
 
-    HideAndSeekMode* hsMode = (HideAndSeekMode*)sInstance->mCurMode;
-    HideAndSeekInfo* curInfo = (HideAndSeekInfo*)sInstance->mModeInfo;
+    HideAndSeekInfo* curInfo = GameModeManager::instance()->getInfo<HideAndSeekInfo>();
 
     TagInf packet = TagInf();
 
@@ -953,10 +923,10 @@ void Client::updateGameInfo(GameInf *packet) {
 void Client::updateTagInfo(TagInf *packet) {
     
     // if the packet is for our player, edit info for our player
-    if (packet->mUserID == mUserID && mCurMode->getMode() == GameMode::HIDEANDSEEK) {
+    if (packet->mUserID == mUserID && GameModeManager::instance()->isMode(GameMode::HIDEANDSEEK)) {
 
-        HideAndSeekMode* mMode = (HideAndSeekMode*)mCurMode;
-        HideAndSeekInfo* curInfo = (HideAndSeekInfo*)mModeInfo;
+        HideAndSeekMode* mMode = GameModeManager::instance()->getMode<HideAndSeekMode>();
+        HideAndSeekInfo* curInfo = GameModeManager::instance()->getInfo<HideAndSeekInfo>();
 
         if (packet->updateType & TagUpdateType::STATE) {
             mMode->setPlayerTagState(packet->isIt);
@@ -1167,7 +1137,7 @@ PuppetInfo *Client::getPuppetInfo(int idx) {
         PuppetInfo *curInfo = Client::sInstance->mPuppetInfoArr[idx];
 
         if (!curInfo) {
-            Logger::log("Attempting to Access Puppet Out of Bounds! Value: %d\n", idx);
+            Logger::log("Attempting to Access Puppet Out of Bounds! Value: %d, Max: %d, Holder: %d\n", idx, sInstance->maxPuppets, sInstance->mPuppetHolder->getSize());
             return nullptr;
         }
 
@@ -1268,8 +1238,7 @@ void Client::updateStates() {
     if(sInstance) {
         sInstance->mPuppetHolder->update();
 
-        if(sInstance->mCurMode && sInstance->mCurMode->isModeActive())
-            sInstance->mCurMode->update();
+        GameModeManager::instance()->update();
     }
 }
 
@@ -1278,22 +1247,23 @@ void Client::updateStates() {
  * 
  * @param state 
  */
-void Client::setGameActive(bool state) {
+void Client::setGameActive(bool isActive) {
     if (sInstance) {
+        sInstance->mIsInGame = isActive;
 
-        sInstance->mIsInGame = state;
-        
+        bool wasPaused = GameModeManager::instance()->isPaused();
+
         // only modify mode state if mode should be active
-        if (sInstance->mIsModeActive) {
+        if (wasPaused == isActive) {
+        
+            GameModeManager::instance()->setPaused(!isActive);
 
-            bool modeActive = sInstance->mCurMode->isModeActive();
-
-            if (state && !modeActive) {
-                Logger::log("Resuming Current Mode.\n");
-                sInstance->mCurMode->begin();
-            } else if (!state && modeActive) {
+            if (!isActive && !wasPaused) {
                 Logger::log("Pausing Current Mode.\n");
-                sInstance->mCurMode->end();
+                GameModeManager::instance()->end();
+            } else if (isActive && wasPaused) {
+                Logger::log("Unpausing Current Mode.\n");
+                GameModeManager::instance()->begin();
             }
         }
     }
@@ -1452,62 +1422,4 @@ Shine* Client::findStageShine(int shineID) {
         }
     }
     return nullptr;
-}
-
-/**
- * @brief gets the client's currently selected gamemode
- * 
- * @return GameMode 
- */
-GameMode Client::getCurrentMode() {
-    return sInstance && sInstance->mCurMode ? sInstance->mCurMode->getMode() : GameMode::NONE;
-}
-
-/**
- * @brief enables or disables currently selected gamemode
- * 
- */
-void Client::toggleCurrentMode() {
-    if (!sInstance || !sInstance->mCurMode) {
-        return;
-    }
-
-    GameModeBase* curMode = sInstance->mCurMode;
-
-    if (curMode->isModeActive()) {
-        Logger::log("Ending Gamemode: %s\n", curMode->getName());
-        curMode->end();
-        sInstance->mIsModeActive = false;
-    } else {
-        Logger::log("Starting Gamemode: %s\n", curMode->getName());
-        curMode->begin();
-        sInstance->mIsModeActive = true;
-    }
-}
-
-/**
- * @brief re-enables current gamemode if previously activated (if a stage reload occurs while the gamemode was previously active, this will turn it back on after initialized)
- * 
- */
-void Client::tryRestartCurrentMode() {
-    if (!sInstance || !sInstance->mCurMode) {
-        return;
-    }
-    // restart mode if previous scene had one active
-    if (sInstance->mIsModeActive) {
-        sInstance->mCurMode->begin();
-    }
-}
-
-GameModeConfigMenu* Client::tryCreateModeMenu() {
-    if (!sInstance)
-        return nullptr;
-
-    switch (sInstance->mServerMode) {
-    case HIDEANDSEEK: {
-        return new HideAndSeekConfigMenu();
-    }
-    default:
-        return nullptr;
-    }
 }

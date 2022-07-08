@@ -11,9 +11,11 @@ class Logger : public SocketBase {
         nn::Result init(const char* ip, u16 port) override;
         
         static void createInstance();
+        static void reconnect();
         static void setLogName(const char *name) { if(sInstance) sInstance->setName(name); }
         static void log(const char* fmt, ...);
         static void log(const char* fmt, va_list args);
+        static void log_buffer(const void* data, u32 length);
 
         static void enableName() { if(sInstance) sInstance->isDisableName = false; }
         static void disableName() { if(sInstance) sInstance->isDisableName = true; }

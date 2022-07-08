@@ -1,4 +1,4 @@
-#include "game/StageScene/StageSceneStateServerConfig.hpp"
+#include "server/StageSceneStateServerConfig.hpp"
 #include <cstdlib>
 #include <math.h>
 #include "server/Client.hpp"
@@ -11,7 +11,9 @@
 #include "prim/seadStringUtil.h"
 #include "rs/util/InputUtil.h"
 #include "server/gamemode/GameModeBase.hpp"
+#include "server/gamemode/GameModeConfigMenuFactory.hpp"
 #include "server/gamemode/GameModeFactory.hpp"
+#include "server/gamemode/GameModeManager.hpp"
 #include "server/HideAndSeekMode.hpp"
 
 StageSceneStateServerConfig::StageSceneStateServerConfig(const char *name, al::Scene *scene, const al::LayoutInitInfo &initInfo, FooterParts *footerParts, GameDataHolder *dataHolder, bool) : al::HostStateBase<al::Scene>(name, scene) {
@@ -62,19 +64,22 @@ StageSceneStateServerConfig::StageSceneStateServerConfig(const char *name, al::S
 
     mModeSelectList->addStringData(modeSelectOptions->mBuffer, "TxtContent");
 
-    // gamemode config menu
-    mGamemodeConfig = new SimpleLayoutMenu("GameModeConfigMenu", "OptionSelect", initInfo, 0, false);
-    mGameModeConfigList = new CommonVerticalList(mGamemodeConfig, initInfo, true);
 
-    al::setPaneString(mGamemodeConfig, "TxtOption", u"Gamemode Configuration", 0);
+    GameModeConfigMenuFactory factory("GameModeConfigFactory");
+    for (int mode = 0; mode < factory.getMenuCount(); mode++) {
+        GameModeEntry& entry = mGamemodeConfigMenus[mode];
+        const char* name = factory.getMenuName(mode);
+        entry.mMenu = factory.getCreator(name)(name);
+        entry.mLayout = new SimpleLayoutMenu("GameModeConfigMenu", "OptionSelect", initInfo, 0, false);
+        entry.mList = new CommonVerticalList(entry.mLayout, initInfo, true);
 
-    mGamemodeConfigMenu = Client::tryCreateModeMenu();
+        al::setPaneString(entry.mLayout, "TxtOption", u"Gamemode Configuration", 0);
 
-    if (mGamemodeConfigMenu) {
-        mGameModeConfigList->initDataNoResetSelected(mGamemodeConfigMenu->getMenuSize());
+        entry.mList->initDataNoResetSelected(entry.mMenu->getMenuSize());
 
-        mGameModeConfigList->addStringData(mGamemodeConfigMenu->getStringData(), "TxtContent");
+        entry.mList->addStringData(entry.mMenu->getStringData(), "TxtContent");
     }
+    // gamemode config menu
 
     mCurrentList = mMainOptionsList;
     mCurrentMenu = mMainOptions;
@@ -183,7 +188,7 @@ void StageSceneStateServerConfig::exeOpenKeyboardPort() {
 
         Client::getKeyboard()->setHeaderText(u"Set a Server Port Below.");
         Client::getKeyboard()->setSubText(u"");
-        Client::openKeyboardIP();
+        Client::openKeyboardPort();
         // anything that happens after this will be ran after the keyboard closes
         al::startHitReaction(mCurrentMenu, "リセット", 0);
         al::setNerve(this, &nrvStageSceneStateServerConfigMainMenu);
@@ -204,15 +209,16 @@ void StageSceneStateServerConfig::exeRestartServer() {
 
 void StageSceneStateServerConfig::exeGamemodeConfig() {
     if (al::isFirstStep(this)) {
-        mCurrentList = mGameModeConfigList;
-        mCurrentMenu = mGamemodeConfig;
+        mGamemodeConfigMenu = &mGamemodeConfigMenus[GameModeManager::instance()->getGameMode()];
+        mCurrentList = mGamemodeConfigMenu->mList;
+        mCurrentMenu = mGamemodeConfigMenu->mLayout;
         subMenuStart();
     }
 
     subMenuUpdate();
     
     if (mIsDecideConfig && mCurrentList->isDecideEnd()) {
-        if (mGamemodeConfigMenu->updateMenu(mCurrentList->mCurSelected)) {
+        if (mGamemodeConfigMenu->mMenu->updateMenu(mCurrentList->mCurSelected)) {
             endSubMenu();
         }
     }
@@ -232,7 +238,7 @@ void StageSceneStateServerConfig::exeGamemodeSelect() {
 
     if (mIsDecideConfig && mCurrentList->isDecideEnd()) {
         Logger::log("Setting Server Mode to: %d\n", mCurrentList->mCurSelected);
-        Client::setServerMode(static_cast<GameMode>(mCurrentList->mCurSelected));
+        GameModeManager::instance()->setMode(static_cast<GameMode>(mCurrentList->mCurSelected));
         endSubMenu();
     }
 }
